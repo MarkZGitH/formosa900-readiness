@@ -31,6 +31,9 @@ from core.readiness import calculate_readiness, calculate_from_baseline
 from core.vision_parser import parse_screenshot
 from core.ai_coach import get_ai_analysis, DIMENSION_NAMES_CN
 from core.assessment import INITIAL_QUESTIONS, build_profile_from_answers
+from core.risk_forecaster import (
+    forecast_day_risks, get_top_risk_days, generate_training_advice
+)
 
 
 # ============================================
@@ -174,8 +177,8 @@ def render_dashboard():
 
         st.divider()
 
-    # ----- 5维度详情 -----
-    st.subheader("📊 5维度详情")
+    # ----- 6维度详情 -----
+    st.subheader("📊 6维度详情")
 
     for dim_key, dim_info in readiness["dimensions"].items():
         score = dim_info["score"]
@@ -190,6 +193,47 @@ def render_dashboard():
     if len([s for s in sessions if "readiness_after" in s]) >= 2:
         st.subheader("📈 准备度趋势")
         plot_readiness_trend(sessions)
+        st.divider()
+
+    # ----- 环台9日Boss Day风险预测 (新功能) -----
+    render_day_risk_forecast(goal, profile, sessions)
+
+
+def render_day_risk_forecast(goal: Dict, profile: Dict, sessions: List[Dict]):
+    """渲染环台9日风险预测模块"""
+    st.subheader("🗺️ 环台9日 Boss Day 风险预测")
+    st.caption("基于你当前能力，预测每一天的相对难度。🟢舒适 🟡可控 🟠吃力 🔴高风险")
+
+    forecasts = forecast_day_risks(goal, profile, sessions)
+    if not forecasts:
+        st.info("完成初始化后即可看到风险预测")
+        return
+
+    # 用循环逐天展示风险
+    for f in forecasts:
+        # 用进度条颜色表达风险 (ratio越高条越满)
+        ratio_display = min(f["ratio"], 2.0) / 2.0  # 归一化到0-1
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(
+                f"{f['emoji']} **Day {f['day']}** {f['route']} "
+                f"· {f['distance_km']}km / {f['climb_m']}m"
+            )
+        with col2:
+            st.markdown(f"**{f['label']}**")
+
+    st.divider()
+
+    # 高风险日 + 训练建议
+    top_risks = get_top_risk_days(forecasts, 3)
+    advice = generate_training_advice(top_risks)
+
+    if advice:
+        st.markdown("#### 🎯 重点突破建议")
+        for a in advice:
+            st.markdown(f"- {a}")
+    else:
+        st.success("🎉 当前能力已能从容应对全部9天！保持训练即可。")
 
 
 def plot_readiness_trend(sessions: List[Dict]):
